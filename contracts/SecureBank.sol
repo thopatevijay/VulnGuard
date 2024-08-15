@@ -4,8 +4,9 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-contract VulnerableBank is Initializable, PausableUpgradeable, OwnableUpgradeable {
+contract SecureBank is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     mapping(address => uint) public balances;
     uint256 public version;
 
@@ -20,7 +21,12 @@ contract VulnerableBank is Initializable, PausableUpgradeable, OwnableUpgradeabl
     function initialize() initializer public {
         __Pausable_init();
         __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
         version = 1;
+    }
+
+    function reinitialize() public reinitializer(2) onlyOwner{
+        version = 2;
     }
 
     function deposit() public payable whenNotPaused {
@@ -28,17 +34,13 @@ contract VulnerableBank is Initializable, PausableUpgradeable, OwnableUpgradeabl
         emit Deposit(msg.sender, msg.value);
     }
 
-    function withdraw(uint _amount) public whenNotPaused {
+    function withdraw(uint _amount) public nonReentrant whenNotPaused {
         require(balances[msg.sender] >= _amount, "Insufficient balance");
         
-        // Vulnerable: Send Ether before updating the balance
+        balances[msg.sender] -= _amount;
+        
         (bool sent, ) = msg.sender.call{value: _amount}("");
         require(sent, "Failed to send Ether");
-        
-        // Update the balance after the transfer, allowing underflow
-        unchecked {
-            balances[msg.sender] -= _amount;
-        }
         
         emit Withdrawal(msg.sender, _amount);
     }
