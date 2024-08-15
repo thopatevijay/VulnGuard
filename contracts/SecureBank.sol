@@ -25,7 +25,7 @@ contract SecureBank is Initializable, PausableUpgradeable, OwnableUpgradeable, R
         version = 1;
     }
 
-    function reinitialize() public reinitializer(2) {
+    function reinitialize() public reinitializer(2) onlyOwner{
         version = 2;
     }
 
