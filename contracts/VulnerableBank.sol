@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
-contract VulnerableBank is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
-    mapping(address => uint256) private balances;
+contract VulnerableBank is Initializable, PausableUpgradeable, OwnableUpgradeable {
+    mapping(address => uint) public balances;
+    uint256 public version;
 
     event Deposit(address indexed user, uint256 amount);
     event Withdrawal(address indexed user, uint256 amount);
@@ -17,10 +17,10 @@ contract VulnerableBank is Initializable, PausableUpgradeable, OwnableUpgradeabl
         _disableInitializers();
     }
 
-    function initialize() initializer public {
+    function initialize() public initializer {
         __Pausable_init();
-        __Ownable_init();
-        __ReentrancyGuard_init();
+        __Ownable_init(msg.sender);
+        version = 1;
     }
 
     function deposit() public payable whenNotPaused {
@@ -28,19 +28,21 @@ contract VulnerableBank is Initializable, PausableUpgradeable, OwnableUpgradeabl
         emit Deposit(msg.sender, msg.value);
     }
 
-    function withdraw(uint256 amount) public whenNotPaused {
-        require(balances[msg.sender] >= amount, "Insufficient balance");
+    function withdraw(uint _amount) public whenNotPaused {
+        require(balances[msg.sender] >= _amount, "Insufficient balance");
         
-        (bool success, ) = msg.sender.call{value: amount}("");
-        require(success, "Transfer failed");
+        // Vulnerable: This line should come after the balance update
+        (bool sent, ) = msg.sender.call{value: _amount}("");
+        require(sent, "Failed to send Ether");
 
-        balances[msg.sender] -= amount;
-
-        emit Withdrawal(msg.sender, amount);
+        // Update the balance after the transfer
+        balances[msg.sender] -= _amount;
+        
+        emit Withdrawal(msg.sender, _amount);
     }
 
-    function getBalance() public view returns (uint256) {
-        return balances[msg.sender];
+    function getBalance() public view returns (uint) {
+        return address(this).balance;
     }
 
     function pause() public onlyOwner {
@@ -51,8 +53,7 @@ contract VulnerableBank is Initializable, PausableUpgradeable, OwnableUpgradeabl
         _unpause();
     }
 
-    // Function to demonstrate upgradability
-    function version() public pure virtual returns (string memory) {
-        return "1.0.0";
+    function getVersion() public view returns (uint256) {
+        return version;
     }
 }
