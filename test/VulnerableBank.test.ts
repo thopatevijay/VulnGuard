@@ -1,10 +1,11 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { Contract, Signer } from "ethers";
-import { VulnerableBank } from "../typechain-types";
+import { VulnerableBank, AttackerContract } from "../typechain-types";
 
 describe("VulnerableBank", function () {
     let vulnerableBank: VulnerableBank;
+    let attackerContract: AttackerContract;
     let owner: Signer;
     let attacker: Signer;
     let user: Signer;
@@ -113,6 +114,42 @@ describe("VulnerableBank", function () {
             await expect(vulnerableBank.connect(user).withdraw(ethers.parseEther("0.5")))
                 .to.be.revertedWithCustomError(vulnerableBank, "EnforcedPause");
             console.log("Withdrawal attempt correctly reverted");
+        });
+    });
+
+    describe("Reentrancy Vulnerability", function () {
+        beforeEach(async function () {
+            // Deploy the AttackerContract
+            const AttackerContractFactory = await ethers.getContractFactory("AttackerContract");
+            attackerContract = await AttackerContractFactory.deploy(await vulnerableBank.getAddress()) as AttackerContract;
+            await attackerContract.waitForDeployment();
+            console.log("AttackerContract deployed to:", await attackerContract.getAddress());
+        });
+
+        it("Should be vulnerable to reentrancy attack", async function () {
+            // add some funds to the VulnerableBank
+            await vulnerableBank.connect(user).deposit({ value: ethers.parseEther("5") });
+            const initialBankBalance = await ethers.provider.getBalance(await vulnerableBank.getAddress());
+            console.log("VulnerableBank balance before attack:", ethers.formatEther(initialBankBalance), "ETH");
+
+            // perform the attack
+            const attackTx = await attackerContract.connect(attacker).attack({ value: ethers.parseEther("1") });
+            await attackTx.wait();
+            console.log("Attack transaction completed");
+
+            // Check the balance of the AttackerContract
+            const attackerBalance = await ethers.provider.getBalance(await attackerContract.getAddress());
+            console.log("AttackerContract balance after attack:", ethers.formatEther(attackerBalance), "ETH");
+
+            // Check the balance of the VulnerableBank
+            const finalBankBalance = await ethers.provider.getBalance(await vulnerableBank.getAddress());
+            console.log("VulnerableBank balance after attack:", ethers.formatEther(finalBankBalance), "ETH");
+
+            // The AttackerContract should have more than 1 ETH (the initial deposit)
+            expect(attackerBalance).to.be.gt(ethers.parseEther("1"));
+
+            // The VulnerableBank should have less ETH than it started with
+            expect(finalBankBalance).to.be.lt(initialBankBalance);
         });
     });
 });

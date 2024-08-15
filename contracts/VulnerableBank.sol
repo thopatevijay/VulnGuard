@@ -17,7 +17,7 @@ contract VulnerableBank is Initializable, PausableUpgradeable, OwnableUpgradeabl
         _disableInitializers();
     }
 
-    function initialize() public initializer {
+    function initialize() initializer public {
         __Pausable_init();
         __Ownable_init(msg.sender);
         version = 1;
@@ -31,12 +31,14 @@ contract VulnerableBank is Initializable, PausableUpgradeable, OwnableUpgradeabl
     function withdraw(uint _amount) public whenNotPaused {
         require(balances[msg.sender] >= _amount, "Insufficient balance");
         
-        // Vulnerable: This line should come after the balance update
+        // Vulnerable: Send Ether before updating the balance
         (bool sent, ) = msg.sender.call{value: _amount}("");
         require(sent, "Failed to send Ether");
-
-        // Update the balance after the transfer
-        balances[msg.sender] -= _amount;
+        
+        // Update the balance after the transfer, allowing underflow
+        unchecked {
+            balances[msg.sender] -= _amount;
+        }
         
         emit Withdrawal(msg.sender, _amount);
     }
