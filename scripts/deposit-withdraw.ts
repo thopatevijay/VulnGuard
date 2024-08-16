@@ -40,11 +40,11 @@ async function main() {
     console.log("Bank balance after deposit:", ethers.formatEther(bankBalanceAfterDeposit), "ETH");
 
     // Perform withdrawal
-    const withdrawAmount = ethers.parseEther("1");
-    console.log("Withdrawing", ethers.formatEther(withdrawAmount), "ETH");
-    const withdrawTx = await vulnerableBank.connect(user).withdraw(withdrawAmount);
-    await withdrawTx.wait();
-    console.log("Withdraw transaction sent:", withdrawTx.hash);
+    // const withdrawAmount = ethers.parseEther("1");
+    // console.log("Withdrawing", ethers.formatEther(withdrawAmount), "ETH");
+    // const withdrawTx = await vulnerableBank.connect(user).withdraw(withdrawAmount);
+    // await withdrawTx.wait();
+    // console.log("Withdraw transaction sent:", withdrawTx.hash);
 
     // Check final balances
     const finalUserBalance = await ethers.provider.getBalance(user.address);
