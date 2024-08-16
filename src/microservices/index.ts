@@ -1,40 +1,57 @@
-import express from 'express';
 import { ethers } from 'ethers';
-import { VulnerableBank__factory } from '../../typechain-types';
 import { ExploitDetectionService } from './ExploitDetectionService';
+import { VulnerableBank__factory } from '../../typechain-types';
+import express from 'express';
+import dotenv from 'dotenv';
 
-const app = express();
-const port = process.env.EXPLOIT_DETECTION_PORT || 3001;
+dotenv.config();
 
-async function startService() {
-  const provider = new ethers.JsonRpcProvider(process.env.PROVIDER_URL || 'http://localhost:8545');
-  const contractAddress = process.env.CONTRACT_ADDRESS || "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
+async function main() {
+  console.log('Initializing Exploit Detection Service...');
 
-  if (!contractAddress) {
-    throw new Error('CONTRACT_ADDRESS environment variable is not set');
-  }
+  const app = express();
+  const port = process.env.PORT || 3001;
 
-  const vulnerableBank = VulnerableBank__factory.connect(contractAddress, provider);
-  const detectionService = new ExploitDetectionService(provider, vulnerableBank);
+  try {
+    const provider = new ethers.JsonRpcProvider(process.env.PROVIDER_URL || 'http://localhost:8545');
+    console.log('Provider initialized. Attempting to connect...');
 
-  app.get('/health', (req, res) => {
-    res.status(200).send('Exploit Detection Service is healthy');
-  });
+    const network = await provider.getNetwork();
+    console.log('Connected to provider:', network.name, 'Chain ID:', network.chainId);
 
-  app.post('/start-monitoring', async (req, res) => {
+    const contractAddress = process.env.CONTRACT_ADDRESS;
+    if (!contractAddress) {
+      console.error('VulnerableBank contract address not found');
+      return;
+    }
+    console.log('VulnerableBank contract address:', contractAddress);
+
+
+    const vulnerableBank = VulnerableBank__factory.connect(contractAddress, provider);
+    console.log('VulnerableBank contract instance created');
+
+    const detectionService = new ExploitDetectionService(provider, vulnerableBank);
+    console.log('Exploit Detection Service initialized');
+
     await detectionService.startMonitoring();
-    res.status(200).send('Monitoring started');
-  });
 
-  app.listen(port, () => {
-    console.log(`Exploit Detection Service listening at http://localhost:${port}`);
-  });
+    app.get('/suspicious-sequences', (req, res) => {
+      const sequences = detectionService.getSuspiciousSequences();
+      res.json(sequences);
+    });
 
-  // Start monitoring by default
-  await detectionService.startMonitoring();
+    app.listen(port, () => {
+      console.log(`Exploit Detection Service listening at http://localhost:${port}`);
+    });
+
+    console.log("Exploit detection service is now active.");
+  } catch (error) {
+    console.error('An error occurred during initialization:', error);
+    process.exit(1);
+  }
 }
 
-startService().catch((error) => {
-  console.error('Failed to start Exploit Detection Service:', error);
+main().catch((error) => {
+  console.error('An unexpected error occurred:', error);
   process.exit(1);
 });

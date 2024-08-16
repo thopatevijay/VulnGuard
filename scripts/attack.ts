@@ -2,9 +2,16 @@ import { ethers } from "hardhat";
 import { VulnerableBank } from "../typechain-types/contracts/VulnerableBank";
 import { VulnerableBank__factory } from "../typechain-types/factories/contracts/VulnerableBank__factory";
 import { AttackerContract__factory } from "../typechain-types";
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 async function main() {
-  const vulnerableBankAddress = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
+  const vulnerableBankAddress = process.env.CONTRACT_ADDRESS;
+  if (!vulnerableBankAddress) {
+    console.error('VulnerableBank contract address not found');
+    return;
+  }
   console.log("VulnerableBank address:", vulnerableBankAddress);
 
   const AttackerContractFactory = await ethers.getContractFactory("AttackerContract") as AttackerContract__factory;
