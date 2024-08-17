@@ -43,14 +43,14 @@ async function main() {
 
     console.log('Reporting Service initialized');
 
-    const detectionService = new ExploitDetectionService(provider, vulnerableBank, reportingService);
+    const exploitDetectionService = new ExploitDetectionService(provider, vulnerableBank, reportingService);
     console.log('Exploit Detection Service initialized');
 
-    const preventionService = new FrontRunningPreventionService(provider, vulnerableBank, signer, detectionService, reportingService);
+    new FrontRunningPreventionService(provider, vulnerableBank, reportingService, exploitDetectionService);
+
     console.log('Front-Running Prevention Service initialized');
 
-    await detectionService.startMonitoring();
-    // await preventionService.start();
+    await exploitDetectionService.startMonitoring();
 
     app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
@@ -90,7 +90,7 @@ async function main() {
 
     app.get('/suspicious-sequences', async (req, res) => {
       try {
-        const sequences = await detectionService.getSuspiciousSequences();
+        const sequences = await exploitDetectionService.getSuspiciousSequences();
         res.json(sequences);
       } catch (error) {
         console.error('Error fetching suspicious sequences:', error);
