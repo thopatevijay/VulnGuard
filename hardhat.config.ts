@@ -25,7 +25,13 @@ const config: HardhatUserConfig = {
       url: process.env.PROVIDER_URL,
       accounts: [process.env.PRIVATE_KEY]
     }
-  }
+  },
+  paths: {
+    sources: "./contracts",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts"
+  },
 };
 
 export default config;

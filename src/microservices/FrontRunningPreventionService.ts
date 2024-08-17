@@ -1,12 +1,14 @@
 import { ethers } from 'ethers';
 import { VulnerableBank } from '../../typechain-types';
 import { ExploitDetectionService } from './ExploitDetectionService';
+import { ReportingService } from './ReportingService';
 
 export class FrontRunningPreventionService {
   private provider: ethers.Provider;
   private contract: VulnerableBank;
   private signer: ethers.Signer;
   private detectionService: ExploitDetectionService;
+  private reportingService: ReportingService;
   private isContractPaused: boolean = false;
   private isPanicMode: boolean = false;
   private lastPauseAttemptTime: number = 0;
@@ -18,15 +20,18 @@ export class FrontRunningPreventionService {
     provider: ethers.Provider,
     contract: VulnerableBank,
     signer: ethers.Signer,
-    detectionService: ExploitDetectionService
+    detectionService: ExploitDetectionService,
+    reportingService: ReportingService
   ) {
     this.provider = provider;
     this.signer = signer;
     this.detectionService = detectionService;
+    this.reportingService = reportingService;
     this.contractAddress = '';
     // Connect the contract to the signer
     this.contract = contract.connect(signer) as VulnerableBank;
   }
+
 
   async start() {
     console.log('Starting Front-Running Prevention Service...');
@@ -96,12 +101,15 @@ export class FrontRunningPreventionService {
       if (receipt) {
         console.log(`Contract paused successfully. Block number: ${receipt.blockNumber}`);
         this.isContractPaused = true;
+        await this.reportingService.logPauseEvent(pauseTx.hash, true);
       } else {
         console.log('Contract pause transaction completed, but no receipt was returned. Retrying...');
+        await this.reportingService.logPauseEvent(pauseTx.hash, false);
         await this.retryPauseWithHigherGas(suspiciousTx);
       }
     } catch (error) {
       console.error('Failed to pause contract:', error);
+      await this.reportingService.logPauseEvent('unknown', false);
       await this.retryPauseWithHigherGas(suspiciousTx);
     }
   }

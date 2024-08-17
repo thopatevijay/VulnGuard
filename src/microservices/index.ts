@@ -1,9 +1,11 @@
 import { ethers } from 'ethers';
 import { ExploitDetectionService } from './ExploitDetectionService';
 import { FrontRunningPreventionService } from './FrontRunningPreventionService';
+import { ReportingService } from './ReportingService';
 import { VulnerableBank__factory } from '../../typechain-types';
 import express from 'express';
 import dotenv from 'dotenv';
+import { exec } from 'child_process';
 
 dotenv.config();
 
@@ -33,10 +35,13 @@ async function main() {
     }
     const signer = new ethers.Wallet(privateKey, provider);
 
-    const detectionService = new ExploitDetectionService(provider, vulnerableBank);
+    const reportingService = new ReportingService();
+    console.log('Reporting Service initialized');
+
+    const detectionService = new ExploitDetectionService(provider, vulnerableBank, reportingService);
     console.log('Exploit Detection Service initialized');
 
-    const preventionService = new FrontRunningPreventionService(provider, vulnerableBank, signer, detectionService);
+    const preventionService = new FrontRunningPreventionService(provider, vulnerableBank, signer, detectionService, reportingService);
     console.log('Front-Running Prevention Service initialized');
 
     await detectionService.startMonitoring();
@@ -46,6 +51,22 @@ async function main() {
       const sequences = detectionService.getSuspiciousSequences();
       res.json(sequences);
     });
+
+    app.get('/analytics', async (req, res) => {
+      const analytics = await reportingService.getAnalytics();
+      res.json(analytics);
+    });
+
+    // Run Slither analysis periodically (e.g., once a day)
+    setInterval(() => {
+      exec('ts-node runSlither.ts', (error, stdout, stderr) => {
+        if (error) {
+          console.error(`Error running Slither analysis: ${error}`);
+          return;
+        }
+        console.log(`Slither analysis output: ${stdout}`);
+      });
+    }, 24 * 60 * 60 * 1000);
 
     app.listen(port, () => {
       console.log(`Services listening at http://localhost:${port}`);
