@@ -19,12 +19,16 @@ async function main() {
 
   try {
     const provider = new ethers.JsonRpcProvider(process.env.PROVIDER_URL || 'http://localhost:8545');
+    console.log(provider)
     console.log('Provider initialized. Attempting to connect...');
 
     const network = await provider.getNetwork();
     console.log('Connected to provider:', network.name, 'Chain ID:', network.chainId);
 
-    const contractAddress = process.env.CONTRACT_ADDRESS || "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
+    const contractAddress = process.env.CONTRACT_ADDRESS;
+    if (!contractAddress) {
+      throw new Error('Contract address not found');
+    }
     console.log('VulnerableBank contract address:', contractAddress);
 
     const vulnerableBank = VulnerableBank__factory.connect(contractAddress, provider);
