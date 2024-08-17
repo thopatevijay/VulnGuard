@@ -12,16 +12,15 @@ dotenv.config();
 
 async function main() {
   console.log('Initializing Services...');
-  
+
   const app = express();
   const port = process.env.PORT || 3001;
   const reportingService = new ReportingService();
-  app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
   try {
     const provider = new ethers.JsonRpcProvider(process.env.PROVIDER_URL || 'http://localhost:8545');
     console.log('Provider initialized. Attempting to connect...');
-    
+
     const network = await provider.getNetwork();
     console.log('Connected to provider:', network.name, 'Chain ID:', network.chainId);
 
@@ -49,17 +48,53 @@ async function main() {
     await detectionService.startMonitoring();
     await preventionService.start();
 
-    app.get('/suspicious-sequences', (req, res) => {
-      const sequences = detectionService.getSuspiciousSequences();
-      res.json(sequences);
+    app.use(express.static(path.join(__dirname, '..', '..', 'public')));
+
+    app.get('/contract-info', async (req, res) => {
+      try {
+        const balance = await provider.getBalance(contractAddress);
+        const isPaused = await vulnerableBank.paused();
+        res.json({
+          balance: ethers.formatEther(balance),
+          isPaused
+        });
+      } catch (error) {
+        console.error('Error fetching contract info:', error);
+        res.status(500).json({ error: 'Failed to fetch contract info' });
+      }
     });
 
     app.get('/analytics', async (req, res) => {
-      const analytics = await reportingService.getAnalytics();
-      res.json(analytics);
+      try {
+        const analytics = await reportingService.getAnalytics();
+        res.json(analytics);
+      } catch (error) {
+        console.error('Error fetching analytics:', error);
+        res.status(500).json({ error: 'Failed to fetch analytics' });
+      }
     });
 
-    // Run Slither analysis periodically (e.g., once a day) - we can adjust this as per our need
+    app.get('/alerts', async (req, res) => {
+      try {
+        const alerts = await reportingService.getAlerts();
+        res.json(alerts);
+      } catch (error) {
+        console.error('Error fetching alerts:', error);
+        res.status(500).json({ error: 'Failed to fetch alerts' });
+      }
+    });
+
+    app.get('/suspicious-sequences', async (req, res) => {
+      try {
+        const sequences = await detectionService.getSuspiciousSequences();
+        res.json(sequences);
+      } catch (error) {
+        console.error('Error fetching suspicious sequences:', error);
+        res.status(500).json({ error: 'Failed to fetch suspicious sequences' });
+      }
+    });
+
+    // Run Slither analysis periodically (e.g., once a day)
     setInterval(() => {
       const contractPath = path.join(__dirname, '..', '..', 'contracts', 'VulnerableBank.sol');
       runSlitherAnalysis(contractPath).catch(error => {

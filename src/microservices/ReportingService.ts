@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 
-// Define schemas
 const TransactionSchema = new mongoose.Schema({
     hash: String,
     from: String,
@@ -27,7 +26,6 @@ const SlitherReportSchema = new mongoose.Schema({
     timestamp: Date,
 });
 
-// Define models
 const Transaction = mongoose.model('Transaction', TransactionSchema);
 const Alert = mongoose.model('Alert', AlertSchema);
 const PauseEvent = mongoose.model('PauseEvent', PauseEventSchema);
@@ -105,19 +103,26 @@ export class ReportingService {
             const alertCount = await Alert.countDocuments();
             const pauseEventCount = await PauseEvent.countDocuments();
             const successfulPauses = await PauseEvent.countDocuments({ success: true });
-
-            const latestSlitherReport = await SlitherReport.findOne().sort('-timestamp');
-
+            
+            const slitherReports = await SlitherReport.find().sort({ timestamp: -1 }).limit(10); // Get last 10 reports
+            
             return {
                 transactionCount,
                 alertCount,
                 pauseEventCount,
                 successfulPauses,
                 pauseEffectiveness: pauseEventCount > 0 ? (successfulPauses / pauseEventCount) * 100 : 0,
-                latestSlitherReport: latestSlitherReport ? latestSlitherReport.report : null,
+                slitherReports,
             };
         });
     }
+
+    async getAlerts(limit: number = 10) {
+        return await this.retryOperation(async () => {
+            return await Alert.find().sort({ timestamp: -1 }).limit(limit);
+        });
+    }
+
 
     async closeConnection(): Promise<void> {
         if (this.isConnected) {
