@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VulnGuard Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header>
+        <h1><i class="fas fa-shield-alt"></i> VulnGuard Dashboard</h1>
+    </header>
+    <main class="container">
+        <section id="contract-info">
+            <h2><i class="fas fa-file-contract"></i> Contract Information</h2>
+            <div class="contract-details">
+                <p><strong>Balance:</strong> <span id="contractBalance">Loading...</span></p>
+                <p><strong>State:</strong> <span id="contractState">Loading...</span></p>
+            </div>
+        </section>
+        <section id="analytics">
+            <h2><i class="fas fa-chart-line"></i> Analytics</h2>
+            <div class="analytics-grid">
+                <div class="analytics-item">
+                    <h3>Transactions</h3>
+                    <p id="transactionCount">Loading...</p>
+                </div>
+                <div class="analytics-item">
+                    <h3>Alerts</h3>
+                    <p id="alertCount">Loading...</p>
+                </div>
+                <div class="analytics-item">
+                    <h3>Pause Events</h3>
+                    <p id="pauseEventCount">Loading...</p>
+                </div>
+                <div class="analytics-item">
+                    <h3>Successful Pauses</h3>
+                    <p id="successfulPauses">Loading...</p>
+                </div>
+                <div class="analytics-item">
+                    <h3>Pause Effectiveness</h3>
+                    <p id="pauseEffectiveness">Loading...</p>
+                </div>
+            </div>
+        </section>
+        <section id="suspicious-sequences">
+            <h2><i class="fas fa-exclamation-triangle"></i> Suspicious Sequences</h2>
+            <ul id="sequencesList" class="list-group">
+                <li class="list-group-item">Loading suspicious sequences...</li>
+            </ul>
+        </section>
+        <section id="alerts">
+            <h2><i class="fas fa-bell"></i> Alerts</h2>
+            <div class="table-container">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Message</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="alertsTableBody">
+                        <tr>
+                            <td colspan="3">Loading alerts...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="slither-report">
+            <h2><i class="fas fa-bug"></i> Slither Reports</h2>
+            <ul id="slitherReportsList" class="list-group">
+                <!-- Slither reports will be dynamically added here -->
+            </ul>
+            <div id="slitherReportDetails" class="mt-3">
+                <!-- Selected Slither report details will be shown here -->
+            </div>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 VulnGuard. All rights reserved.</p>
+    </footer>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>
