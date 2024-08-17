@@ -5,7 +5,8 @@ import { ReportingService } from './ReportingService';
 import { VulnerableBank__factory } from '../../typechain-types';
 import express from 'express';
 import dotenv from 'dotenv';
-import { exec } from 'child_process';
+import { runSlitherAnalysis } from './runSlither';
+import path from 'path';
 
 dotenv.config();
 
@@ -14,6 +15,7 @@ async function main() {
   
   const app = express();
   const port = process.env.PORT || 3001;
+  const reportingService = new ReportingService();
 
   try {
     const provider = new ethers.JsonRpcProvider(process.env.PROVIDER_URL || 'http://localhost:8545');
@@ -35,7 +37,6 @@ async function main() {
     }
     const signer = new ethers.Wallet(privateKey, provider);
 
-    const reportingService = new ReportingService();
     console.log('Reporting Service initialized');
 
     const detectionService = new ExploitDetectionService(provider, vulnerableBank, reportingService);
@@ -57,29 +58,40 @@ async function main() {
       res.json(analytics);
     });
 
-    // Run Slither analysis periodically (e.g., once a day)
+    // Run Slither analysis periodically (e.g., once a day) - we can adjust this as per our need
     setInterval(() => {
-      exec('ts-node runSlither.ts', (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error running Slither analysis: ${error}`);
-          return;
-        }
-        console.log(`Slither analysis output: ${stdout}`);
+      const contractPath = path.join(__dirname, '..', '..', 'contracts', 'VulnerableBank.sol');
+      runSlitherAnalysis(contractPath).catch(error => {
+        console.error('Error running Slither analysis:', error);
       });
     }, 24 * 60 * 60 * 1000);
 
-    app.listen(port, () => {
+    const server = app.listen(port, () => {
       console.log(`Services listening at http://localhost:${port}`);
     });
 
     console.log("All services are now active.");
+
+    // Handle graceful shutdown
+    process.on('SIGTERM', async () => {
+      console.log('SIGTERM signal received. Closing HTTP server and database connection.');
+      await reportingService.closeConnection();
+      server.close(() => {
+        console.log('HTTP server closed.');
+        process.exit(0);
+      });
+    });
+
   } catch (error) {
     console.error('An error occurred during initialization:', error);
+    await reportingService.closeConnection();
     process.exit(1);
   }
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error('An unexpected error occurred:', error);
+  const reportingService = new ReportingService();
+  await reportingService.closeConnection();
   process.exit(1);
 });
