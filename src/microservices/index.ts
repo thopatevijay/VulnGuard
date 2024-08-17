@@ -16,6 +16,7 @@ async function main() {
   const app = express();
   const port = process.env.PORT || 3001;
   const reportingService = new ReportingService();
+  app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
   try {
     const provider = new ethers.JsonRpcProvider(process.env.PROVIDER_URL || 'http://localhost:8545');
