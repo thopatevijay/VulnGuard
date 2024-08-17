@@ -46,7 +46,7 @@ async function main() {
     console.log('Front-Running Prevention Service initialized');
 
     await detectionService.startMonitoring();
-    await preventionService.start();
+    // await preventionService.start();
 
     app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
