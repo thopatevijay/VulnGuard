@@ -80,8 +80,10 @@ export class FrontRunningPreventionService {
           console.log(`[${new Date().toISOString()}] Contract pause verified successfully.`);
           this.isContractPaused = true;
           await this.reportingService.logAlert('contractPaused', `Contract paused due to potential exploit. Transaction: ${pauseTx.hash}`);
+          await this.reportingService.logPauseEvent(pauseTx.hash, true);
           return;
         } else {
+          await this.reportingService.logPauseEvent(pauseTx.hash, false);
           throw new Error('Contract pause transaction succeeded, but contract is not paused');
         }
       } catch (error) {
@@ -95,6 +97,8 @@ export class FrontRunningPreventionService {
         if (attempt === maxAttempts - 1) {
           console.log(`[${new Date().toISOString()}] Max attempts reached. Implementing fallback mechanism.`);
           await this.reportingService.logAlert('pauseFailed', 'Failed to pause contract after multiple attempts');
+          await this.reportingService.logPauseEvent("pauseFailed", false);
+
         } else {
           console.log(`[${new Date().toISOString()}] Retrying in 2 seconds...`);
           await new Promise(resolve => setTimeout(resolve, 2000));
