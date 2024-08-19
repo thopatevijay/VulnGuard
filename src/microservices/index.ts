@@ -19,12 +19,16 @@ async function main() {
 
   try {
     const provider = new ethers.JsonRpcProvider(process.env.PROVIDER_URL || 'http://localhost:8545');
+    console.log(provider)
     console.log('Provider initialized. Attempting to connect...');
 
     const network = await provider.getNetwork();
     console.log('Connected to provider:', network.name, 'Chain ID:', network.chainId);
 
-    const contractAddress = process.env.CONTRACT_ADDRESS || "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
+    const contractAddress = process.env.CONTRACT_ADDRESS;
+    if (!contractAddress) {
+      throw new Error('Contract address not found');
+    }
     console.log('VulnerableBank contract address:', contractAddress);
 
     const vulnerableBank = VulnerableBank__factory.connect(contractAddress, provider);
@@ -39,14 +43,14 @@ async function main() {
 
     console.log('Reporting Service initialized');
 
-    const detectionService = new ExploitDetectionService(provider, vulnerableBank, reportingService);
+    const exploitDetectionService = new ExploitDetectionService(provider, vulnerableBank, reportingService);
     console.log('Exploit Detection Service initialized');
 
-    const preventionService = new FrontRunningPreventionService(provider, vulnerableBank, signer, detectionService, reportingService);
+    new FrontRunningPreventionService(provider, vulnerableBank, reportingService, exploitDetectionService);
+
     console.log('Front-Running Prevention Service initialized');
 
-    await detectionService.startMonitoring();
-    await preventionService.start();
+    await exploitDetectionService.startMonitoring();
 
     app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
@@ -86,7 +90,7 @@ async function main() {
 
     app.get('/suspicious-sequences', async (req, res) => {
       try {
-        const sequences = await detectionService.getSuspiciousSequences();
+        const sequences = await exploitDetectionService.getSuspiciousSequences();
         res.json(sequences);
       } catch (error) {
         console.error('Error fetching suspicious sequences:', error);

@@ -1,167 +1,109 @@
 import { ethers } from 'ethers';
 import { VulnerableBank } from '../../typechain-types';
-import { ExploitDetectionService } from './ExploitDetectionService';
 import { ReportingService } from './ReportingService';
+import { ExploitDetectionService } from './ExploitDetectionService';
 
 export class FrontRunningPreventionService {
-  private provider: ethers.Provider;
+  private provider: ethers.JsonRpcProvider;
   private contract: VulnerableBank;
-  private signer: ethers.Signer;
-  private detectionService: ExploitDetectionService;
+  private contractAddress: string;
   private reportingService: ReportingService;
   private isContractPaused: boolean = false;
-  private isPanicMode: boolean = false;
-  private lastPauseAttemptTime: number = 0;
-  private readonly PAUSE_COOLDOWN: number = 100; // 100 ms cooldown
-  private readonly PANIC_MODE_DURATION: number = 30000; // 30 seconds
-  private contractAddress: string;
+  private pauseTransactionHash: string | null = null;
+  private lastPauseAttempt: number = 0;
+  private readonly PAUSE_COOLDOWN: number = 5000; // 5 seconds cooldown
 
-  constructor(
-    provider: ethers.Provider,
-    contract: VulnerableBank,
-    signer: ethers.Signer,
-    detectionService: ExploitDetectionService,
-    reportingService: ReportingService
-  ) {
+  constructor(provider: ethers.JsonRpcProvider, contract: VulnerableBank, reportingService: ReportingService, exploitDetectionService: ExploitDetectionService) {
     this.provider = provider;
-    this.signer = signer;
-    this.detectionService = detectionService;
-    this.reportingService = reportingService;
+    this.contract = contract;
     this.contractAddress = '';
-    // Connect the contract to the signer
-    this.contract = contract.connect(signer) as VulnerableBank;
+    this.reportingService = reportingService;
+
+    exploitDetectionService.on('potentialExploitDetected', this.handlePotentialExploit.bind(this));
   }
 
-
-  async start() {
-    console.log('Starting Front-Running Prevention Service...');
-    this.contractAddress = await this.contract.getAddress();
-    this.detectionService.on('potentialAttack', this.handlePotentialAttack.bind(this));
-    await this.updateContractPauseStatus();
-    this.monitorMempool();
+  private async handlePotentialExploit(exploitInfo: { type: string, sequence: string, suspiciousTransactions: any[] }) {
+    console.log(`[${new Date().toISOString()}] Potential exploit detected. Attempting to pause contract...`);
+    await this.attemptHighPriorityPause(exploitInfo.suspiciousTransactions[0]);
   }
 
-  private async monitorMempool() {
-    this.provider.on('pending', async (txHash) => {
+  private async attemptHighPriorityPause(suspiciousTx: any) {
+    const now = Date.now();
+    if (now - this.lastPauseAttempt < this.PAUSE_COOLDOWN) {
+      console.log(`[${new Date().toISOString()}] Pause attempt cooldown in effect. Skipping this attempt.`);
+      return;
+    }
+    this.lastPauseAttempt = now;
+
+    if (this.isContractPaused || this.pauseTransactionHash) {
+      console.log(`[${new Date().toISOString()}] Pause already in progress or contract already paused. Skipping pause attempt.`);
+      return;
+    }
+
+    console.log(`[${new Date().toISOString()}] Attempting high-priority pause...`);
+
+    const maxAttempts = 5;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        const tx = await this.provider.getTransaction(txHash);
-        if (tx && this.isSupiciousTransaction(tx)) {
-          console.log(`Potential attack transaction detected in mempool: ${txHash}`);
-          await this.flashPause(tx);
+        const signer = this.provider.getSigner();
+        const address = await (await signer).getAddress();
+
+        // Check if the contract is already paused
+        const isPaused = await this.contract.paused();
+        if (isPaused) {
+          console.log(`[${new Date().toISOString()}] Contract is already paused.`);
+          this.isContractPaused = true;
+          return;
+        }
+
+        const suspiciousGasPrice = await this.provider.getTransaction(suspiciousTx.hash).then(tx => tx?.gasPrice || ethers.parseUnits('100', 'gwei'));
+        const pauseGasPrice = suspiciousGasPrice * BigInt(300 + attempt * 100) / BigInt(100);
+
+        console.log(`[${new Date().toISOString()}] Attempt ${attempt + 1}: Using gas price ${ethers.formatUnits(pauseGasPrice, 'gwei')} gwei`);
+
+        const gasLimit = 500000;
+
+        const pauseTx = await this.contract.connect(await signer).pause({
+          gasLimit: gasLimit,
+          gasPrice: pauseGasPrice,
+        });
+
+        this.pauseTransactionHash = pauseTx.hash;
+        console.log(`[${new Date().toISOString()}] High-priority pause transaction sent: ${pauseTx.hash}`);
+
+        const receipt = await pauseTx.wait(1);
+        console.log(`[${new Date().toISOString()}] Contract pause transaction mined in block: ${receipt?.blockNumber}`);
+
+        // Verify the pause was successful
+        const finalPauseState = await this.contract.paused();
+        if (finalPauseState) {
+          console.log(`[${new Date().toISOString()}] Contract pause verified successfully.`);
+          this.isContractPaused = true;
+          await this.reportingService.logAlert('contractPaused', `Contract paused due to potential exploit. Transaction: ${pauseTx.hash}`);
+          await this.reportingService.logPauseEvent(pauseTx.hash, true);
+          return;
+        } else {
+          await this.reportingService.logPauseEvent(pauseTx.hash, false);
+          throw new Error('Contract pause transaction succeeded, but contract is not paused');
         }
       } catch (error) {
-        console.error('Error monitoring mempool:', error);
+        console.error(`[${new Date().toISOString()}] Failed to pause contract (Attempt ${attempt + 1}):`, error);
+        if (error instanceof Error) {
+          console.error('Error message:', error.message);
+          console.error('Error stack:', error.stack);
+        }
+        this.pauseTransactionHash = null;
+
+        if (attempt === maxAttempts - 1) {
+          console.log(`[${new Date().toISOString()}] Max attempts reached. Implementing fallback mechanism.`);
+          await this.reportingService.logAlert('pauseFailed', 'Failed to pause contract after multiple attempts');
+          await this.reportingService.logPauseEvent("pauseFailed", false);
+
+        } else {
+          console.log(`[${new Date().toISOString()}] Retrying in 2 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
-    });
-  }
-
-  private isSupiciousTransaction(tx: ethers.TransactionResponse): boolean {
-    if (tx.to === this.contractAddress) return true;
-    if (tx.value > ethers.parseEther('1')) return true;
-    return false;
-  }
-
-  private async handlePotentialAttack(attackInfo: { type: string; sequence: string; latestTx: any }) {
-    console.log(`Potential ${attackInfo.type} attack detected. Attempting to pause contract...`);
-    await this.flashPause(attackInfo.latestTx);
-  }
-
-  private async flashPause(suspiciousTx: ethers.TransactionResponse | null) {
-    const currentTime = Date.now();
-    if (!this.isContractPaused && currentTime - this.lastPauseAttemptTime > this.PAUSE_COOLDOWN) {
-      this.lastPauseAttemptTime = currentTime;
-      this.activatePanicMode();
-      await this.pauseContract(suspiciousTx);
-    } else {
-      console.log('Skipping pause attempt due to cooldown or contract already paused.');
-    }
-  }
-
-  private activatePanicMode() {
-    this.isPanicMode = true;
-    console.log('Panic mode activated');
-    setTimeout(() => {
-      this.isPanicMode = false;
-      console.log('Panic mode deactivated');
-    }, this.PANIC_MODE_DURATION);
-  }
-
-  private async pauseContract(suspiciousTx: ethers.TransactionResponse | null) {
-    try {
-      const { maxFeePerGas, maxPriorityFeePerGas } = await this.getAggressiveGasFees(suspiciousTx);
-      console.log('Attempting to pause contract...');
-      console.log(`Max Fee Per Gas: ${maxFeePerGas}, Max Priority Fee Per Gas: ${maxPriorityFeePerGas}`);
-      const pauseTx = await this.contract.pause({
-        maxFeePerGas,
-        maxPriorityFeePerGas,
-        gasLimit: 500000,
-      });
-      console.log(`Flash pause transaction submitted: ${pauseTx.hash}`);
-      const receipt = await pauseTx.wait(1);
-      if (receipt) {
-        console.log(`Contract paused successfully. Block number: ${receipt.blockNumber}`);
-        this.isContractPaused = true;
-        await this.reportingService.logPauseEvent(pauseTx.hash, true);
-      } else {
-        console.log('Contract pause transaction completed, but no receipt was returned. Retrying...');
-        await this.reportingService.logPauseEvent(pauseTx.hash, false);
-        await this.retryPauseWithHigherGas(suspiciousTx);
-      }
-    } catch (error) {
-      console.error('Failed to pause contract:', error);
-      await this.reportingService.logPauseEvent('unknown', false);
-      await this.retryPauseWithHigherGas(suspiciousTx);
-    }
-  }
-
-  private async getAggressiveGasFees(suspiciousTx: ethers.TransactionResponse | null): Promise<{ maxFeePerGas: bigint, maxPriorityFeePerGas: bigint }> {
-    const feeData = await this.provider.getFeeData();
-    let maxFeePerGas = feeData.maxFeePerGas || ethers.parseUnits('100', 'gwei');
-    let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.parseUnits('2', 'gwei');
-    
-    if (suspiciousTx && suspiciousTx.maxFeePerGas) {
-      maxFeePerGas = (suspiciousTx.maxFeePerGas * 200n) / 100n; // 200% of suspicious tx
-    }
-
-    if (this.isPanicMode) {
-      maxFeePerGas *= 3n;
-    }
-
-    // Ensure maxPriorityFeePerGas is always less than maxFeePerGas
-    maxPriorityFeePerGas = maxFeePerGas / 2n;
-
-    return { maxFeePerGas, maxPriorityFeePerGas };
-  }
-
-  private async retryPauseWithHigherGas(suspiciousTx: ethers.TransactionResponse | null) {
-    try {
-      const { maxFeePerGas, maxPriorityFeePerGas } = await this.getAggressiveGasFees(suspiciousTx);
-      console.log('Retrying pause with higher gas...');
-      console.log(`Retry Max Fee Per Gas: ${maxFeePerGas * 2n}, Retry Max Priority Fee Per Gas: ${maxPriorityFeePerGas * 2n}`);
-      const pauseTx = await this.contract.pause({
-        maxFeePerGas: maxFeePerGas * 2n,
-        maxPriorityFeePerGas: maxPriorityFeePerGas * 2n,
-        gasLimit: 600000,
-      });
-      console.log(`Ultra-aggressive retry pause transaction submitted: ${pauseTx.hash}`);
-      const receipt = await pauseTx.wait(1);
-      if (receipt) {
-        console.log(`Contract paused successfully on retry. Block number: ${receipt.blockNumber}`);
-        this.isContractPaused = true;
-      } else {
-        console.log('Contract pause retry transaction completed, but no receipt was returned.');
-      }
-    } catch (error) {
-      console.error('Failed to pause contract on retry:', error);
-    }
-  }
-
-  private async updateContractPauseStatus() {
-    try {
-      this.isContractPaused = await this.contract.paused();
-      console.log(`Contract pause status: ${this.isContractPaused ? 'Paused' : 'Active'}`);
-    } catch (error) {
-      console.error('Failed to update contract pause status:', error);
     }
   }
 }
