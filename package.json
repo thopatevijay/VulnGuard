@@ -7,8 +7,6 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy": "hardhat run scripts/deploy.ts",
-    "monitor:build": "tsc -p tsconfig.monitor.json",
-    "monitor:start": "node dist/monitor/monitor/index.js",
     "start": "ts-node src/microservices/index.ts",
     "build": "tsc",
     "serve": "node dist/index.js"
